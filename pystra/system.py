@@ -84,6 +84,7 @@ class Component:
             stochastic_model=self.stochastic_model,
             limit_state=self.limit_state,
         )
+        analysis.run()
         beta = float(analysis.beta[0])
         pf = analysis.Pf
 
@@ -105,9 +106,9 @@ class System:
     def __init__(self, obj_list):
 
         self.components = []  # list of components objs
-        self.event_vectors = []  # list of individual event_vectors
-        self.event_vector = None  # specific system event vectors
-        # used to describe which MECE components events occurs in event
+        self.event_vectors = []  # list of individual event_vectors (components and sub-systems if present)
+        self.event_vector = None  # specific system event vector
+        # describes which MECE components events occurs in systme event
         self.rvs_autocorrelation_matrix = None
         # autocorrelation matrix between random variables
         self.cmp_correlation_matrix = None
@@ -132,10 +133,10 @@ class System:
                 # append the component
 
             self.event_vectors.append(obj.event_vector)
-            # also append the event vector for component/system
+            # also append the event vector for component/sub-system
 
-        # now find the combo array used to find the event vector for system
-        self.combo_array = np.array(list(product(*self.event_vectors)))
+        # now populate all mece events used to find the event vector for system
+        self.mece_events = np.array(list(product(*self.event_vectors)))
 
     def setCorrelation(self, cm_obj, of_components=False):
         """
@@ -168,8 +169,9 @@ class System:
         pk = self.rvs_autocorrelation_matrix
         if self.cmp_correlation_matrix is None:
             self.cmp_correlation_matrix = np.dot(np.dot(a, pk), a.T)
+            # find the correlation matrix between components
+            # given correlations between variables
         # and now replace the diagonal with ones
-        # (correlation between same limit state)
         np.fill_diagonal(self.cmp_correlation_matrix, 1)
 
     def getBounds(self, bounds_type="basic"):
@@ -309,14 +311,14 @@ class SeriesSystem(System):
         """
         Establish the event vector for series system as
         1 - (1 - e1)*(1 - e2)....(1 - en)
-        where e is the component/system event (and columns of combo_array)
+        where e is the component/system event (and columns of mece_events)
         """
-        one_array = np.ones_like(self.combo_array)
-        # create an ones array size of combo_array
-        one_vector = np.ones_like(self.combo_array[:, 1])
-        # create an ones vector length of one column from combo_array
+        one_array = np.ones_like(self.mece_events)
+        # create an ones array size of mece_events
+        one_vector = np.ones_like(self.mece_events[:, 1])
+        # create an ones vector length of one column from mece_events
 
-        return one_vector - np.prod((one_array - self.combo_array), axis=1)
+        return one_vector - np.prod((one_array - self.mece_events), axis=1)
         # calculate series system event vector
 
     def bounds_basic(self):
@@ -387,9 +389,9 @@ class ParallelSystem(System):
         """
         Establish the event vector for parallel system as
         (e1)*(e2)....(en)
-        where e is the component/system event (and columns of combo_array)
+        where e is the component/system event (and columns of mece_events)
         """
-        return np.prod(self.combo_array, axis=1)
+        return np.prod(self.mece_events, axis=1)
         # calculate parallel system event vector
 
     def bounds_basic(self):
